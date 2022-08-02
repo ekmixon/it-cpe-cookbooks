@@ -50,7 +50,7 @@ def get_os_version(only_major_minor=True, as_tuple=False):
     """
     os_version_tuple = platform.mac_ver()[0].split('.')
     if only_major_minor:
-        os_version_tuple = os_version_tuple[0:2]
+        os_version_tuple = os_version_tuple[:2]
     if as_tuple:
         return tuple(map(int, os_version_tuple))
     else:
@@ -119,9 +119,7 @@ def curl_escape(s):
 
 
 def build_curl_config_file(d):
-    lines = []
-    for k, v in d.items():
-        lines.append('%s = "%s"' % (k, curl_escape(v)))
+    lines = ['%s = "%s"' % (k, curl_escape(v)) for k, v in d.items()]
     return '\n'.join(lines)
 
 
@@ -132,9 +130,9 @@ def escrow_key(plist):
     if server_url is None:
         return False
     if server_url.endswith("/"):
-        theurl = server_url+"checkin/"
+        theurl = f"{server_url}checkin/"
     else:
-        theurl = server_url+"/checkin/"
+        theurl = f"{server_url}/checkin/"
     # In the future, we're going to submit the whole plist, but for now...
     serial = plist['SerialNumber']
     key = plist['RecoveryKey']
@@ -159,8 +157,7 @@ def escrow_key(plist):
     cmd = ['/usr/bin/curl', '--fail', '--silent',
            '--show-error', '--location']
     if pref('AdditionalCurlOpts') and isinstance(pref('AdditionalCurlOpts'), list):
-        for curl_opt in pref('AdditionalCurlOpts'):
-            cmd.append(curl_opt)
+        cmd.extend(iter(pref('AdditionalCurlOpts')))
     cmd.extend(['--config', '-'])
     task = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
@@ -219,23 +216,22 @@ def using_recovery_key():
     except Exception:
         logging.warning('fdesetup usingrecoverykey failed to run correctly')
         return False
-    if using_key == 'true':
-        logging.warning('Detected Recovery Key use.')
-        return True
-    else:
+    if using_key != 'true':
         return False
+    logging.warning('Detected Recovery Key use.')
+    return True
 
 
 def post_run_command():
     run_command = pref('PostRunCommand')
     output_plist = pref('OutputPath')
     if run_command and not os.path.isfile(output_plist):
-        logging.info('Running {}'.format(run_command))
+        logging.info(f'Running {run_command}')
         try:
             output = subprocess.check_output(run_command)
             logging.info(output)
         except subprocess.CalledProcessError as e:
-            logging.error('Failed to run PostRunCommand: {}'.format(e))
+            logging.error(f'Failed to run PostRunCommand: {e}')
 
 
 def get_recovery_key(key_location):
@@ -244,8 +240,7 @@ def get_recovery_key(key_location):
     # checks to see if recovery key preference is set
     try:
         keyplist = FoundationPlist.readPlist(key_location)
-        recovery_key = keyplist['RecoveryKey'].strip()
-        return recovery_key
+        return keyplist['RecoveryKey'].strip()
     except FoundationPlist.NSPropertyListSerializationException:
         logging.info(
             'We had trouble getting info from {0}...'.format(key_location))
@@ -310,10 +305,9 @@ def validate_key(current_key):
         logging.error(err)
     if stdout_data.strip() == 'true':
         return True
-    else:
-        logging.error('Recovery Key could not be validated.')
-        logging.error('Failed with Error: {}'.format(stdout_data))
-        return False
+    logging.error('Recovery Key could not be validated.')
+    logging.error(f'Failed with Error: {stdout_data}')
+    return False
 
 
 def rotate_key(current_key, plist):
@@ -340,14 +334,11 @@ def rotate_key(current_key, plist):
 def get_enabled_user():
     """Crypt needs an enabled user in its plist that our normal output
     doesn't give us so we need to add a user to the plist"""
-    if pref('SkipUsers'):
-        nonusers = pref('SkipUsers')
-    else:
-        nonusers = []
+    nonusers = pref('SkipUsers') or []
     fde_users = subprocess.check_output(
         ["/usr/bin/fdesetup", "list"]).split('\n')
     for user in fde_users:
-        if not user.split(',')[0] in nonusers:
+        if user.split(',')[0] not in nonusers:
             cryptuser = user.split(',')[0]
             break
     return cryptuser
